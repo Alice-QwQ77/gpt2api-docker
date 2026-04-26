@@ -40,8 +40,12 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
       -ldflags "-s -w -X main.version=upstream-${UPSTREAM_REF_SHORT} -X main.buildTime=${BUILD_DATE}" \
       -o /out/gpt2api ./cmd/server
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    GOBIN=/out GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} CGO_ENABLED=0 \
-    go install github.com/pressly/goose/v3/cmd/goose@${GOOSE_VERSION}
+    mkdir -p /tmp/goose-src \
+    && cd /tmp/goose-src \
+    && go mod init goose-wrapper \
+    && go get github.com/pressly/goose/v3/cmd/goose@${GOOSE_VERSION} \
+    && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} \
+       go build -trimpath -ldflags "-s -w" -o /out/goose github.com/pressly/goose/v3/cmd/goose
 
 FROM alpine:${ALPINE_VERSION}
 ARG UPSTREAM_REPO
