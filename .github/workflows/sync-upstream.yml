@@ -29,15 +29,7 @@ jobs:
         if: steps.sync.outputs.changed == 'true'
         id: vars
         shell: pwsh
-        run: |
-          $lock = Get-Content upstream.lock.json -Raw | ConvertFrom-Json
-          $image = $env:GHCR_IMAGE.ToLowerInvariant()
-          "image=$image" | Add-Content $env:GITHUB_OUTPUT
-          "repo_url=$($lock.repo_url)" | Add-Content $env:GITHUB_OUTPUT
-          "upstream_commit=$($lock.commit)" | Add-Content $env:GITHUB_OUTPUT
-          "upstream_short=$($lock.commit.Substring(0, 7))" | Add-Content $env:GITHUB_OUTPUT
-          "archive_url=$($lock.archive_url)" | Add-Content $env:GITHUB_OUTPUT
-          "build_date=$([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))" | Add-Content $env:GITHUB_OUTPUT
+        run: ./scripts/resolve-build-metadata.ps1 -Image $env:GHCR_IMAGE -WriteGitHubOutput
 
       - name: Set up Docker Buildx
         if: steps.sync.outputs.changed == 'true'
@@ -74,6 +66,7 @@ jobs:
             com.github.upstream.repo=${{ steps.vars.outputs.repo_url }}
             com.github.upstream.commit=${{ steps.vars.outputs.upstream_commit }}
           build-args: |
+            GO_VERSION=${{ steps.vars.outputs.go_version }}
             UPSTREAM_REPO=${{ steps.vars.outputs.repo_url }}.git
             UPSTREAM_REF=${{ steps.vars.outputs.upstream_commit }}
             UPSTREAM_REF_SHORT=${{ steps.vars.outputs.upstream_short }}

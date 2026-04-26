@@ -12,24 +12,27 @@ if ($PSVersionTable.PSVersion.Major -ge 7) {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
-$lock = Get-Content $LockPath -Raw | ConvertFrom-Json
-$buildDate = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
-$upstreamShort = $lock.commit.Substring(0, 7)
+$metaJson = & powershell -NoProfile -File (Join-Path $PSScriptRoot "resolve-build-metadata.ps1") -LockPath $LockPath -Image $ImageName
+if ($LASTEXITCODE -ne 0) {
+    throw "failed to resolve build metadata"
+}
+$meta = $metaJson | ConvertFrom-Json
 
 Write-Host "[build] image         = $ImageName"
-Write-Host "[build] upstream repo = $($lock.repo_url)"
-Write-Host "[build] upstream ref  = $($lock.commit)"
+Write-Host "[build] upstream repo = $($meta.repo_url)"
+Write-Host "[build] upstream ref  = $($meta.upstream_commit)"
+Write-Host "[build] go version    = $($meta.go_version)"
 
 docker build `
-    --build-arg "UPSTREAM_REPO=$($lock.repo_url).git" `
-    --build-arg "UPSTREAM_REF=$($lock.commit)" `
-    --build-arg "UPSTREAM_REF_SHORT=$upstreamShort" `
-    --build-arg "UPSTREAM_ARCHIVE_URL=$($lock.archive_url)" `
-    --build-arg "BUILD_DATE=$buildDate" `
+    --build-arg "GO_VERSION=$($meta.go_version)" `
+    --build-arg "UPSTREAM_REPO=$($meta.repo_url).git" `
+    --build-arg "UPSTREAM_REF=$($meta.upstream_commit)" `
+    --build-arg "UPSTREAM_REF_SHORT=$($meta.upstream_short)" `
+    --build-arg "UPSTREAM_ARCHIVE_URL=$($meta.archive_url)" `
+    --build-arg "BUILD_DATE=$($meta.build_date)" `
     -t $ImageName `
     .
 
 if ($LASTEXITCODE -ne 0) {
     throw "docker build failed"
 }
-

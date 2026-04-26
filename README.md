@@ -100,6 +100,7 @@ pwsh -NoProfile -File .\deploy\init-env.ps1 -Image ghcr.io/alice-qwq77/gpt2api:l
 ## 说明
 
 - 当前工作流默认发布 `linux/amd64` 和 `linux/arm64`，同一个 GHCR 标签会按宿主机架构自动拉取。
+- Go 构建版本会从上游提交对应的 `go.mod` 自动解析，不再写死在仓库里。
 - 运行镜像时会自动执行数据库迁移。
 - 如果容器里缺少 `/app/configs/config.yaml`，入口脚本会自动从上游自带的 `config.example.yaml` 补一份默认配置。
 - 如果你后面想改成 Docker Hub，只需要调整 [`docker-publish.yml`](.github/workflows/docker-publish.yml) 的登录和镜像名逻辑。
