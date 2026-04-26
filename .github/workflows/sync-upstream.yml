@@ -1,0 +1,91 @@
+name: Sync Upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 17 * * *"
+
+env:
+  GHCR_IMAGE: ghcr.io/alice-qwq77/gpt2api
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update upstream lock
+        id: sync
+        shell: pwsh
+        run: ./scripts/sync-upstream.ps1
+
+      - name: Read build metadata
+        if: steps.sync.outputs.changed == 'true'
+        id: vars
+        shell: pwsh
+        run: |
+          $lock = Get-Content upstream.lock.json -Raw | ConvertFrom-Json
+          $image = $env:GHCR_IMAGE.ToLowerInvariant()
+          "image=$image" | Add-Content $env:GITHUB_OUTPUT
+          "repo_url=$($lock.repo_url)" | Add-Content $env:GITHUB_OUTPUT
+          "upstream_commit=$($lock.commit)" | Add-Content $env:GITHUB_OUTPUT
+          "upstream_short=$($lock.commit.Substring(0, 7))" | Add-Content $env:GITHUB_OUTPUT
+          "archive_url=$($lock.archive_url)" | Add-Content $env:GITHUB_OUTPUT
+          "build_date=$([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))" | Add-Content $env:GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        if: steps.sync.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        if: steps.sync.outputs.changed == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Log in to GHCR
+        if: steps.sync.outputs.changed == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        if: steps.sync.outputs.changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ steps.vars.outputs.image }}:latest
+            ${{ steps.vars.outputs.image }}:upstream-${{ steps.vars.outputs.upstream_short }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Automated Docker build for 432539/gpt2api
+            com.github.upstream.repo=${{ steps.vars.outputs.repo_url }}
+            com.github.upstream.commit=${{ steps.vars.outputs.upstream_commit }}
+          build-args: |
+            UPSTREAM_REPO=${{ steps.vars.outputs.repo_url }}.git
+            UPSTREAM_REF=${{ steps.vars.outputs.upstream_commit }}
+            UPSTREAM_REF_SHORT=${{ steps.vars.outputs.upstream_short }}
+            UPSTREAM_ARCHIVE_URL=${{ steps.vars.outputs.archive_url }}
+            BUILD_DATE=${{ steps.vars.outputs.build_date }}
+
+      - name: Commit lock update
+        if: steps.sync.outputs.changed == 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add upstream.lock.json
+          git commit -m "chore: sync upstream to ${{ steps.sync.outputs.commit_short }}"
+          git push
