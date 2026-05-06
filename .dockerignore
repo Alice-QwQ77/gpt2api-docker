@@ -1,0 +1,8 @@
+.git
+.github
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
+actions-*.zip
+*.log
+node_modules

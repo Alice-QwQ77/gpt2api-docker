@@ -23,6 +23,8 @@ RUN apk add --no-cache git ca-certificates tzdata
 COPY --from=source /src/backend/go.mod /src/backend/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY --from=source /src/backend ./
+COPY docker/patches/backend-config-env.patch /tmp/backend-config-env.patch
+RUN git apply /tmp/backend-config-env.patch
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} \
     go build -trimpath \
@@ -47,6 +49,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     go get github.com/pressly/goose/v3/cmd/goose@${GOOSE_VERSION} && \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} \
     go build -trimpath -ldflags="-s -w" -o /out/goose github.com/pressly/goose/v3/cmd/goose
+RUN mkdir -p /out/runtime/logs /out/runtime/storage/public
 
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
@@ -59,8 +62,9 @@ COPY --from=builder /out/worker /app/worker
 COPY --from=builder /out/goose /app/goose
 COPY --from=builder /src/backend/configs /app/configs
 COPY --from=builder /src/backend/migrations /app/migrations
+COPY --from=builder --chown=65532:65532 /out/runtime/logs /app/logs
+COPY --from=builder --chown=65532:65532 /out/runtime/storage /app/storage
 ENV TZ=Asia/Shanghai
 USER 65532:65532
 EXPOSE 17180 17188 17200
-ENTRYPOINT ["/app/api"]
-
+CMD ["/app/api"]

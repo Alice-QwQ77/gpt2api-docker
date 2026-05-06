@@ -1,0 +1,43 @@
+diff --git a/pkg/config/config.go b/pkg/config/config.go
+index 4fbd122..5a2dfc1 100644
+--- a/pkg/config/config.go
++++ b/pkg/config/config.go
+@@ -4,6 +4,7 @@ package config
+ import (
+ 	"fmt"
+ 	"os"
++	"strconv"
+ 	"strings"
+ 	"sync"
+ 	"time"
+@@ -185,6 +186,20 @@ func loadInternal() (*Config, error) {
+ 			*target = val
+ 		}
+ 	}
++	mapInt64Env := func(target *int64, keys ...string) error {
++		for _, key := range keys {
++			val := strings.TrimSpace(os.Getenv(key))
++			if val == "" {
++				continue
++			}
++			parsed, err := strconv.ParseInt(val, 10, 64)
++			if err != nil {
++				return fmt.Errorf("%s must be an int64: %w", key, err)
++			}
++			*target = parsed
++		}
++		return nil
++	}
+ 	mapEnv(&out.MySQL.DSN, "KLEIN_DB_DSN")
+ 	mapEnv(&out.Redis.Addr, "KLEIN_REDIS_ADDR")
+ 	mapEnv(&out.Redis.Password, "KLEIN_REDIS_PASSWORD")
+@@ -194,6 +208,9 @@ func loadInternal() (*Config, error) {
+ 	mapEnv(&out.Provider.GrokBase, "KLEIN_GROK_BASE")
+ 	mapEnv(&out.Logger.Dir, "KLEIN_LOG_DIR")
+ 	mapEnv(&out.Logger.Level, "KLEIN_LOG_LEVEL")
++	if err := mapInt64Env(&out.Snowflake.NodeID, "KLEIN_SNOWFLAKE_NODE_ID", "KLEIN_NODE_ID"); err != nil {
++		return nil, err
++	}
+ 
+ 	if origins := os.Getenv("KLEIN_CORS_ORIGINS"); origins != "" {
+ 		out.CORS.Origins = splitAndTrim(origins, ",")

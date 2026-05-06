@@ -7,8 +7,6 @@ services:
       - --default-authentication-plugin=caching_sha2_password
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
-      - --innodb-buffer-pool-size=2G
-      - --max_connections=300
       - --sql-mode=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION
     environment:
       MYSQL_ROOT_PASSWORD: ${KLEIN_MYSQL_ROOT_PASSWORD}
@@ -23,22 +21,34 @@ services:
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p$$MYSQL_ROOT_PASSWORD"]
       interval: 10s
-      retries: 6
+      timeout: 5s
+      retries: 12
     networks: [klein]
 
   redis:
     image: redis:7-alpine
     container_name: klein-redis
     restart: always
-    command: redis-server --appendonly yes
+    command:
+      - sh
+      - -c
+      - |
+        if [ -n "$$KLEIN_REDIS_PASSWORD" ]; then
+          exec redis-server --appendonly yes --requirepass "$$KLEIN_REDIS_PASSWORD"
+        fi
+        exec redis-server --appendonly yes
+    environment:
+      KLEIN_REDIS_PASSWORD: ${KLEIN_REDIS_PASSWORD:-}
+      TZ: Asia/Shanghai
     ports:
       - "127.0.0.1:${KLEIN_REDIS_PORT:-16379}:6379"
     volumes:
       - klein-redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "if [ -n \"$$KLEIN_REDIS_PASSWORD\" ]; then redis-cli --no-auth-warning -a \"$$KLEIN_REDIS_PASSWORD\" ping; else redis-cli ping; fi"]
       interval: 10s
-      retries: 6
+      timeout: 5s
+      retries: 12
     networks: [klein]
 
   migrate:
@@ -51,7 +61,7 @@ services:
       - -dir
       - /app/migrations
       - mysql
-      - ${KLEIN_DB_DSN}
+      - "${KLEIN_DB_DSN:?set KLEIN_DB_DSN in deploy/.env}"
       - up
     depends_on:
       mysql: { condition: service_healthy }
@@ -63,7 +73,7 @@ services:
     container_name: klein-api
     restart: always
     command: ["/app/api"]
-    environment: &common-env
+    environment: &backend-env
       KLEIN_ENV: ${KLEIN_ENV:-prod}
       KLEIN_DB_DSN: ${KLEIN_DB_DSN}
       KLEIN_REDIS_ADDR: ${KLEIN_REDIS_ADDR:-redis:6379}
@@ -75,12 +85,14 @@ services:
       KLEIN_GROK_BASE: ${KLEIN_GROK_BASE:-https://api.x.ai}
       KLEIN_PROVIDER_GPT: ${KLEIN_PROVIDER_GPT:-mock}
       KLEIN_PROVIDER_GROK: ${KLEIN_PROVIDER_GROK:-mock}
+      KLEIN_GPT_BASE_URL: ${KLEIN_GPT_BASE_URL:-https://chatgpt.com}
       KLEIN_GROK_BASE_URL: ${KLEIN_GROK_BASE_URL:-https://grok.com}
-      KLEIN_GROK_CF_STATE_PATH: /app/storage/grok_cf.json
       KLEIN_CORS_ORIGINS: ${KLEIN_CORS_ORIGINS}
       KLEIN_LOG_DIR: /app/logs
-      TZ: Asia/Shanghai
+      KLEIN_STORAGE_ROOT: /app/storage/public
+      KLEIN_GROK_CF_STATE_PATH: /app/storage/grok_cf.json
       KLEIN_NODE_ID: 1
+      TZ: Asia/Shanghai
     expose: ["17180"]
     volumes:
       - klein-logs:/app/logs
@@ -88,11 +100,6 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD", "/app/api", "--help"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks: [klein]
 
   admin:
@@ -102,7 +109,7 @@ services:
     restart: always
     command: ["/app/admin"]
     environment:
-      <<: *common-env
+      <<: *backend-env
       KLEIN_NODE_ID: 2
     expose: ["17188"]
     volumes:
@@ -120,7 +127,7 @@ services:
     restart: always
     command: ["/app/openai"]
     environment:
-      <<: *common-env
+      <<: *backend-env
       KLEIN_NODE_ID: 3
     expose: ["17200"]
     volumes:
@@ -138,7 +145,7 @@ services:
     restart: always
     command: ["/app/worker"]
     environment:
-      <<: *common-env
+      <<: *backend-env
       KLEIN_NODE_ID: 4
     volumes:
       - klein-logs:/app/logs
@@ -154,8 +161,6 @@ services:
     container_name: klein-user-web
     restart: always
     expose: ["80"]
-    volumes:
-      - ./nginx-dev/user-web.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on: [api, openai]
     networks: [klein]
 
@@ -165,8 +170,6 @@ services:
     container_name: klein-admin-web
     restart: always
     expose: ["80"]
-    volumes:
-      - ./nginx-dev/admin-web.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on: [admin]
     networks: [klein]
 
@@ -181,7 +184,6 @@ services:
       - "${KLEIN_OPENAI_PORT:-17200}:17200"
     volumes:
       - ./nginx:/etc/nginx/conf.d:ro
-      - klein-logs:/var/log/nginx
     networks: [klein]
 
 volumes:
@@ -193,4 +195,3 @@ volumes:
 networks:
   klein:
     name: klein-net
-

@@ -21,7 +21,6 @@ RUN pnpm --filter @kleinai/admin build
 
 FROM nginx:1.27-alpine AS runtime
 COPY --from=build /repo/apps/admin/dist /usr/share/nginx/html
-COPY --from=source /src/frontend/apps/admin/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx/admin-web.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
-

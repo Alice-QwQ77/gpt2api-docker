@@ -1,49 +1,137 @@
 # deploy
 
-这个目录用于直接消费本仓库发布出的 KleinAI v2 三镜像：
+这个目录提供一套按上游源码实际运行方式整理过的 Docker Compose 部署方案。
 
-- `ghcr.io/alice-qwq77/gpt2api:latest`
-- `ghcr.io/alice-qwq77/gpt2api-admin-web:latest`
-- `ghcr.io/alice-qwq77/gpt2api-user-web:latest`
+## 架构
 
-快速开始：
+Compose 会启动这些服务：
+
+- `mysql`：MySQL 8，保存业务数据
+- `redis`：Redis 7，供限流、worker 和后续异步任务使用
+- `migrate`：一次性运行 goose 迁移，成功后退出
+- `api`：用户端 API，容器内 `17180`
+- `admin`：管理后台 API，容器内 `17188`
+- `openai`：OpenAI 兼容 API，容器内 `17200`
+- `worker`：后台 worker，不监听 HTTP
+- `user-web`：用户前台静态文件
+- `admin-web`：管理后台静态文件
+- `nginx`：外层入口，负责端口暴露和 API 反代
+
+默认对外端口：
+
+```text
+17080 -> 用户前台，并代理 /api/ 到 api
+17088 -> 管理后台，并代理 /admin/api/ 到 admin
+17200 -> OpenAI 兼容 API，代理 /v1/ 到 openai
+```
+
+## 快速开始
+
+生成 `.env`：
 
 ```powershell
 pwsh -NoProfile -File .\init-env.ps1
 ```
 
-脚本会优先从仓库的 `git remote origin` 自动生成：
+Linux/macOS：
 
-```text
-ghcr.io/alice-qwq77/gpt2api:latest
-ghcr.io/alice-qwq77/gpt2api-admin-web:latest
-ghcr.io/alice-qwq77/gpt2api-user-web:latest
+```sh
+sh ./init-env.sh
 ```
 
-然后你只需要补齐数据库和密钥配置，再执行：
+如果 `.env` 已存在，需要覆盖：
+
+```powershell
+pwsh -NoProfile -File .\init-env.ps1 -Force
+```
+
+```sh
+FORCE=1 sh ./init-env.sh
+```
+
+修改 `.env` 后启动：
 
 ```powershell
 docker compose up -d
 ```
 
-服务启动后：
+## 必填配置
 
-- `http://<host>:17080` 是用户前台
-- `http://<host>:17088` 是管理后台
-- `http://<host>:17200/v1` 是 OpenAI 兼容 API
-- `mysql` 数据会保存在 `klein-mysql-data` 卷
-- `redis` 数据会保存在 `klein-redis-data` 卷
-- GHCR 镜像同时提供 `amd64` 和 `arm64`，同一个标签会自动匹配宿主机架构
+首次部署至少修改这些值：
 
-如果要更新到最新镜像：
+- `KLEIN_MYSQL_ROOT_PASSWORD`
+- `KLEIN_MYSQL_PASSWORD`
+- `KLEIN_DB_DSN`，其中密码必须和 `KLEIN_MYSQL_PASSWORD` 一致
+- `KLEIN_JWT_SECRET`，长度至少 32 字节
+- `KLEIN_JWT_REFRESH_SECRET`，长度至少 32 字节
+- `KLEIN_AES_KEY`，32 字节原文或 64 位 hex；示例值只适合测试
+
+默认 `KLEIN_PROVIDER_GPT=mock`、`KLEIN_PROVIDER_GROK=mock`，接口会走 mock provider。生产接真实账号池时改成：
+
+```text
+KLEIN_PROVIDER_GPT=real
+KLEIN_PROVIDER_GROK=real
+KLEIN_GPT_BASE_URL=https://chatgpt.com
+KLEIN_GROK_BASE_URL=https://grok.com
+```
+
+真实调用还需要进入管理后台导入 GPT/Grok 账号池和代理配置。
+
+## 检查服务
+
+```powershell
+docker compose ps
+docker compose logs -f migrate
+docker compose logs -f api admin openai worker
+```
+
+健康检查地址：
+
+```text
+http://<host>:17080/healthz
+http://<host>:17080/readyz
+http://<host>:17088/healthz
+http://<host>:17200/v1/health
+```
+
+`/readyz` 会检查 MySQL 和 Redis；如果它失败，优先看 `.env` 里的 DSN、Redis 密码和迁移日志。
+
+## 更新镜像
 
 ```powershell
 docker compose pull
 docker compose up -d
 ```
 
-如果当前目录没有 GitHub 远端，可以手动传入镜像地址：
+每次启动都会先跑 `migrate`，所以跟随上游更新后新增 migration 会自动应用到已有数据库。
+
+## 手动指定镜像
+
+PowerShell：
 
 ```powershell
-pwsh -NoProfile -File .\init-env.ps1
+pwsh -NoProfile -File .\init-env.ps1 `
+  -BackendImage ghcr.io/alice-qwq77/gpt2api:latest `
+  -AdminWebImage ghcr.io/alice-qwq77/gpt2api-admin-web:latest `
+  -UserWebImage ghcr.io/alice-qwq77/gpt2api-user-web:latest `
+  -Force
 ```
+
+sh：
+
+```sh
+BACKEND_IMAGE=ghcr.io/alice-qwq77/gpt2api:latest \
+ADMIN_WEB_IMAGE=ghcr.io/alice-qwq77/gpt2api-admin-web:latest \
+USER_WEB_IMAGE=ghcr.io/alice-qwq77/gpt2api-user-web:latest \
+FORCE=1 \
+sh ./init-env.sh
+```
+
+## 数据卷
+
+- `klein-mysql-data`：MySQL 数据
+- `klein-redis-data`：Redis AOF 数据
+- `klein-logs`：后端日志
+- `klein-storage`：生成结果缓存、Grok CF 状态文件
+
+不要在升级时删除这些卷，除非你明确要清空数据。
