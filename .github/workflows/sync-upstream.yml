@@ -6,7 +6,9 @@ on:
     - cron: "17 17 * * *"
 
 env:
-  GHCR_IMAGE: ghcr.io/alice-qwq77/gpt2api
+  GHCR_BACKEND_IMAGE: ghcr.io/alice-qwq77/gpt2api
+  GHCR_ADMIN_WEB_IMAGE: ghcr.io/alice-qwq77/gpt2api-admin-web
+  GHCR_USER_WEB_IMAGE: ghcr.io/alice-qwq77/gpt2api-user-web
 
 permissions:
   contents: write
@@ -29,7 +31,14 @@ jobs:
         if: steps.sync.outputs.changed == 'true'
         id: vars
         shell: pwsh
-        run: ./scripts/resolve-build-metadata.ps1 -Image $env:GHCR_IMAGE -WriteGitHubOutput
+        run: ./scripts/resolve-build-metadata.ps1 -BackendImage $env:GHCR_BACKEND_IMAGE -AdminWebImage $env:GHCR_ADMIN_WEB_IMAGE -UserWebImage $env:GHCR_USER_WEB_IMAGE -WriteGitHubOutput
+
+      - name: Stop on unsupported legacy layout
+        if: steps.sync.outputs.changed == 'true' && steps.vars.outputs.layout != 'v2'
+        shell: bash
+        run: |
+          echo "Current packaging only supports upstream v2 layout, got: ${{ steps.vars.outputs.layout }}"
+          exit 1
 
       - name: Set up Docker Buildx
         if: steps.sync.outputs.changed == 'true'
@@ -47,31 +56,71 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build and push backend image
         if: steps.sync.outputs.changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          file: ./docker/backend.Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ${{ steps.vars.outputs.image }}:latest
-            ${{ steps.vars.outputs.image }}:upstream-${{ steps.vars.outputs.upstream_short }}
+            ${{ steps.vars.outputs.backend_image }}:latest
+            ${{ steps.vars.outputs.backend_image }}:upstream-${{ steps.vars.outputs.upstream_short }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.description=Automated Docker build for 432539/gpt2api
+            org.opencontainers.image.description=Automated backend Docker build for 432539/gpt2api
             com.github.upstream.repo=${{ steps.vars.outputs.repo_url }}
             com.github.upstream.commit=${{ steps.vars.outputs.upstream_commit }}
           build-args: |
             GO_VERSION=${{ steps.vars.outputs.go_version }}
-            UPSTREAM_REPO=${{ steps.vars.outputs.repo_url }}.git
-            UPSTREAM_REF=${{ steps.vars.outputs.upstream_commit }}
-            UPSTREAM_REF_SHORT=${{ steps.vars.outputs.upstream_short }}
             UPSTREAM_ARCHIVE_URL=${{ steps.vars.outputs.archive_url }}
             BUILD_DATE=${{ steps.vars.outputs.build_date }}
+            VERSION=${{ steps.vars.outputs.version_tag }}
+
+      - name: Build and push admin-web image
+        if: steps.sync.outputs.changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/admin-web.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ steps.vars.outputs.admin_web_image }}:latest
+            ${{ steps.vars.outputs.admin_web_image }}:upstream-${{ steps.vars.outputs.upstream_short }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Automated admin-web Docker build for 432539/gpt2api
+            com.github.upstream.repo=${{ steps.vars.outputs.repo_url }}
+            com.github.upstream.commit=${{ steps.vars.outputs.upstream_commit }}
+          build-args: |
+            UPSTREAM_ARCHIVE_URL=${{ steps.vars.outputs.archive_url }}
+
+      - name: Build and push user-web image
+        if: steps.sync.outputs.changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/user-web.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ steps.vars.outputs.user_web_image }}:latest
+            ${{ steps.vars.outputs.user_web_image }}:upstream-${{ steps.vars.outputs.upstream_short }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Automated user-web Docker build for 432539/gpt2api
+            com.github.upstream.repo=${{ steps.vars.outputs.repo_url }}
+            com.github.upstream.commit=${{ steps.vars.outputs.upstream_commit }}
+          build-args: |
+            UPSTREAM_ARCHIVE_URL=${{ steps.vars.outputs.archive_url }}
 
       - name: Commit lock update
         if: steps.sync.outputs.changed == 'true'

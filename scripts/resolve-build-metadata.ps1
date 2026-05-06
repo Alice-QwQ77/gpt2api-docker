@@ -1,6 +1,8 @@
 param(
     [string]$LockPath = "upstream.lock.json",
-    [string]$Image = "ghcr.io/alice-qwq77/gpt2api",
+    [string]$BackendImage = "ghcr.io/alice-qwq77/gpt2api",
+    [string]$AdminWebImage = "ghcr.io/alice-qwq77/gpt2api-admin-web",
+    [string]$UserWebImage = "ghcr.io/alice-qwq77/gpt2api-user-web",
     [switch]$WriteGitHubOutput
 )
 
@@ -14,10 +16,30 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
 $lock = Get-Content $LockPath -Raw | ConvertFrom-Json
-$rawGoModUrl = "https://raw.githubusercontent.com/{0}/{1}/go.mod" -f $lock.repo, $lock.commit
+$repoArchiveUrl = $lock.archive_url
+$tmpDir = Join-Path $env:TEMP ("gpt2api-meta-" + $lock.commit.Substring(0, 12))
+if (Test-Path $tmpDir) {
+    Remove-Item -Recurse -Force $tmpDir
+}
+New-Item -ItemType Directory -Force $tmpDir | Out-Null
+$archivePath = Join-Path $tmpDir "src.tar.gz"
+Invoke-WebRequest -Uri $repoArchiveUrl -OutFile $archivePath -UseBasicParsing
+tar -xzf $archivePath -C $tmpDir
+$srcRoot = Get-ChildItem $tmpDir -Directory | Where-Object { $_.Name -like "gpt2api-*" } | Select-Object -First 1
+if (-not $srcRoot) {
+    throw "unable to extract upstream archive"
+}
 
-Write-Host "[meta] reading upstream go.mod from $rawGoModUrl"
-$goMod = Invoke-WebRequest -Uri $rawGoModUrl -UseBasicParsing | Select-Object -ExpandProperty Content
+$layout = "legacy"
+$goModPath = Join-Path $srcRoot.FullName "go.mod"
+if (Test-Path (Join-Path $srcRoot.FullName "backend\\go.mod")) {
+    $layout = "v2"
+    $goModPath = Join-Path $srcRoot.FullName "backend\\go.mod"
+}
+
+Write-Host "[meta] detected upstream layout: $layout"
+Write-Host "[meta] reading go.mod from $goModPath"
+$goMod = Get-Content $goModPath -Raw
 
 $goVersion = $null
 $toolchainMatch = [regex]::Match($goMod, '(?m)^\s*toolchain\s+go(?<version>[0-9][0-9A-Za-z.\-]*)\s*$')
@@ -37,13 +59,17 @@ if (-not $goVersion) {
 }
 
 $result = [ordered]@{
-    image           = $Image.ToLowerInvariant()
+    layout          = $layout
+    backend_image   = $BackendImage.ToLowerInvariant()
+    admin_web_image = $AdminWebImage.ToLowerInvariant()
+    user_web_image  = $UserWebImage.ToLowerInvariant()
     repo_url        = $lock.repo_url
     upstream_commit = $lock.commit
     upstream_short  = $lock.commit.Substring(0, 7)
     archive_url     = $lock.archive_url
     go_version      = $goVersion
     build_date      = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    version_tag     = "upstream-" + $lock.commit.Substring(0, 7)
 }
 
 if ($WriteGitHubOutput -and $env:GITHUB_OUTPUT) {
@@ -53,4 +79,3 @@ if ($WriteGitHubOutput -and $env:GITHUB_OUTPUT) {
 }
 
 $result | ConvertTo-Json -Depth 4
-

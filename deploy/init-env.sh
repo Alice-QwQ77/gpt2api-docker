@@ -1,8 +1,12 @@
 #!/usr/bin/env sh
 set -eu
 
-IMAGE="${1:-}"
-PACKAGE_NAME="${PACKAGE_NAME:-gpt2api}"
+BACKEND_IMAGE="${BACKEND_IMAGE:-}"
+ADMIN_WEB_IMAGE="${ADMIN_WEB_IMAGE:-}"
+USER_WEB_IMAGE="${USER_WEB_IMAGE:-}"
+BACKEND_PACKAGE_NAME="${BACKEND_PACKAGE_NAME:-gpt2api}"
+ADMIN_WEB_PACKAGE_NAME="${ADMIN_WEB_PACKAGE_NAME:-gpt2api-admin-web}"
+USER_WEB_PACKAGE_NAME="${USER_WEB_PACKAGE_NAME:-gpt2api-user-web}"
 DEFAULT_OWNER="${DEFAULT_OWNER:-alice-qwq77}"
 ENV_PATH="${ENV_PATH:-.env}"
 FORCE="${FORCE:-0}"
@@ -46,16 +50,26 @@ if [ -f "$OUTPUT_PATH" ] && [ "$FORCE" != "1" ]; then
   exit 1
 fi
 
-if [ -z "$IMAGE" ]; then
+if [ -z "$BACKEND_IMAGE" ] || [ -z "$ADMIN_WEB_IMAGE" ] || [ -z "$USER_WEB_IMAGE" ]; then
   remote=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)
   if [ -n "$remote" ]; then
-    IMAGE=$(resolve_ghcr_image "$remote")
+    [ -n "$BACKEND_IMAGE" ] || BACKEND_IMAGE=$(PACKAGE_NAME="$BACKEND_PACKAGE_NAME" resolve_ghcr_image "$remote")
+    [ -n "$ADMIN_WEB_IMAGE" ] || ADMIN_WEB_IMAGE=$(PACKAGE_NAME="$ADMIN_WEB_PACKAGE_NAME" resolve_ghcr_image "$remote")
+    [ -n "$USER_WEB_IMAGE" ] || USER_WEB_IMAGE=$(PACKAGE_NAME="$USER_WEB_PACKAGE_NAME" resolve_ghcr_image "$remote")
   else
-    IMAGE=$(printf 'ghcr.io/%s/%s:latest\n' "$DEFAULT_OWNER" "$PACKAGE_NAME" | tr '[:upper:]' '[:lower:]')
+    [ -n "$BACKEND_IMAGE" ] || BACKEND_IMAGE=$(printf 'ghcr.io/%s/%s:latest\n' "$DEFAULT_OWNER" "$BACKEND_PACKAGE_NAME" | tr '[:upper:]' '[:lower:]')
+    [ -n "$ADMIN_WEB_IMAGE" ] || ADMIN_WEB_IMAGE=$(printf 'ghcr.io/%s/%s:latest\n' "$DEFAULT_OWNER" "$ADMIN_WEB_PACKAGE_NAME" | tr '[:upper:]' '[:lower:]')
+    [ -n "$USER_WEB_IMAGE" ] || USER_WEB_IMAGE=$(printf 'ghcr.io/%s/%s:latest\n' "$DEFAULT_OWNER" "$USER_WEB_PACKAGE_NAME" | tr '[:upper:]' '[:lower:]')
   fi
 fi
 
-sed "s#^GPT2API_IMAGE=.*#GPT2API_IMAGE=$IMAGE#" "$TEMPLATE_PATH" > "$OUTPUT_PATH"
+sed \
+  -e "s#^KLEIN_BACKEND_IMAGE=.*#KLEIN_BACKEND_IMAGE=$BACKEND_IMAGE#" \
+  -e "s#^KLEIN_ADMIN_WEB_IMAGE=.*#KLEIN_ADMIN_WEB_IMAGE=$ADMIN_WEB_IMAGE#" \
+  -e "s#^KLEIN_USER_WEB_IMAGE=.*#KLEIN_USER_WEB_IMAGE=$USER_WEB_IMAGE#" \
+  "$TEMPLATE_PATH" > "$OUTPUT_PATH"
 
 echo "[init-env] wrote $OUTPUT_PATH"
-echo "[init-env] GPT2API_IMAGE=$IMAGE"
+echo "[init-env] KLEIN_BACKEND_IMAGE=$BACKEND_IMAGE"
+echo "[init-env] KLEIN_ADMIN_WEB_IMAGE=$ADMIN_WEB_IMAGE"
+echo "[init-env] KLEIN_USER_WEB_IMAGE=$USER_WEB_IMAGE"

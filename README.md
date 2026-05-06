@@ -4,7 +4,11 @@
 
 仓库地址：<https://github.com/Alice-QwQ77/gpt2api-docker>
 
-它不直接把上游源码提交进来，而是用 [`upstream.lock.json`](upstream.lock.json) 固定一个上游提交。这样镜像构建既能自动追更新，也能保持可复现。
+它不直接把上游源码提交进来，而是用 [`upstream.lock.json`](upstream.lock.json) 固定一个上游提交。现在仓库默认适配上游 `v2 / KleinAI` 新结构，也就是：
+
+- `backend`
+- `frontend/apps/admin`
+- `frontend/apps/user`
 
 ## 仓库包含什么
 
@@ -14,8 +18,12 @@
   每天检查一次上游 `main`，有新提交就先构建并发布镜像，再更新锁文件推回本仓库。
 - `.github/workflows/docker-publish.yml`
   只要锁文件或构建资产变化，就自动构建并发布镜像到 GHCR。
-- `Dockerfile`
-  CI 友好的多阶段构建，不依赖上游“先在宿主机预编译再打包”的流程。
+- `docker/backend.Dockerfile`
+  自动构建 KleinAI 后端镜像，内含 `api` / `admin` / `openai` / `worker` 四个二进制。
+- `docker/admin-web.Dockerfile`
+  自动构建管理后台前端镜像。
+- `docker/user-web.Dockerfile`
+  自动构建用户前台镜像。
 - `deploy/docker-compose.yml`
   一个直接消费已发布镜像的部署示例。
 
@@ -35,14 +43,17 @@
 
 `docker-publish` 仍然保留，用来处理你手动修改 `Dockerfile`、`deploy` 目录或工作流本身后的重新发布。
 
-当前仓库固定发布到：
+当前仓库固定发布三套镜像：
 
 - `ghcr.io/alice-qwq77/gpt2api:latest`
+- `ghcr.io/alice-qwq77/gpt2api-admin-web:latest`
+- `ghcr.io/alice-qwq77/gpt2api-user-web:latest`
 
-同时保留这些标签：
+每套镜像都会保留：
 
-- `ghcr.io/alice-qwq77/gpt2api:upstream-<上游短 SHA>`
-- `ghcr.io/alice-qwq77/gpt2api:git-<当前仓库短 SHA>`
+- `:latest`
+- `:upstream-<上游短 SHA>`
+- `:git-<当前仓库短 SHA>`
 
 ## 首次使用
 
@@ -54,9 +65,11 @@
 
 ```text
 ghcr.io/alice-qwq77/gpt2api:latest
+ghcr.io/alice-qwq77/gpt2api-admin-web:latest
+ghcr.io/alice-qwq77/gpt2api-user-web:latest
 ```
 
-工作流会直接把镜像发布到这个固定 GHCR 路径，不需要额外再配镜像名变量。
+工作流会直接把三套镜像发布到这些固定 GHCR 路径，不需要额外再配镜像名变量。
 
 ## 本地手动同步上游
 
@@ -73,15 +86,19 @@ pwsh -NoProfile -File .\scripts\sync-upstream.ps1 -DryRun
 ## 本地手动构建镜像
 
 ```powershell
-pwsh -NoProfile -File .\scripts\build-image.ps1 -ImageName gpt2api-local:dev
+pwsh -NoProfile -File .\scripts\build-image.ps1
 ```
 
-它会读取 [`upstream.lock.json`](upstream.lock.json)，然后用与 CI 相同的构建参数执行 `docker build`。
+它会读取 [`upstream.lock.json`](upstream.lock.json)，然后本地构建三套镜像：
+
+- `gpt2api-local:dev`
+- `gpt2api-admin-web-local:dev`
+- `gpt2api-user-web-local:dev`
 
 ## 部署
 
 1. 进入 [`deploy`](deploy) 目录。
-2. 运行初始化脚本自动生成 `.env`，它会从 `git remote origin` 推导 GHCR 镜像地址。
+2. 运行初始化脚本自动生成 `.env`，它会从 `git remote origin` 推导三套 GHCR 镜像地址。
 3. 填好 `JWT_SECRET`、`CRYPTO_AES_KEY` 和数据库密码。
 4. 执行 `docker compose up -d`。
 
@@ -94,13 +111,13 @@ docker compose up -d
 如果你的部署目录没有配置 GitHub 远端，也可以手动指定镜像：
 
 ```powershell
-pwsh -NoProfile -File .\deploy\init-env.ps1 -Image ghcr.io/alice-qwq77/gpt2api:latest
+pwsh -NoProfile -File .\deploy\init-env.ps1
 ```
 
 ## 说明
 
 - 当前工作流默认发布 `linux/amd64` 和 `linux/arm64`，同一个 GHCR 标签会按宿主机架构自动拉取。
-- Go 构建版本会从上游提交对应的 `go.mod` 自动解析，不再写死在仓库里。
-- 运行镜像时会自动执行数据库迁移。
-- 如果容器里缺少 `/app/configs/config.yaml`，入口脚本会自动从上游自带的 `config.example.yaml` 补一份默认配置。
+- Go 构建版本会从上游提交对应的 `backend/go.mod` 或根 `go.mod` 自动解析。
+- 当前主线包装面向上游 v2 新结构；如果上游回退到老结构，workflow 会明确报 unsupported layout。
+- 数据库迁移由同一个后端镜像内置的 `/app/goose` 和 `/app/migrations` 完成，compose 会先跑 `migrate` 再启动业务服务。
 - 如果你后面想改成 Docker Hub，只需要调整 [`docker-publish.yml`](.github/workflows/docker-publish.yml) 的登录和镜像名逻辑。
