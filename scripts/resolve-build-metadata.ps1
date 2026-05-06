@@ -17,10 +17,8 @@ Set-Location $repoRoot
 
 $lock = Get-Content $LockPath -Raw | ConvertFrom-Json
 $repoArchiveUrl = $lock.archive_url
-$tmpDir = Join-Path $env:TEMP ("gpt2api-meta-" + $lock.commit.Substring(0, 12))
-if (Test-Path $tmpDir) {
-    Remove-Item -Recurse -Force $tmpDir
-}
+$tempRoot = [System.IO.Path]::GetTempPath()
+$tmpDir = Join-Path $tempRoot ("gpt2api-meta-" + $lock.commit.Substring(0, 12) + "-" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force $tmpDir | Out-Null
 $archivePath = Join-Path $tmpDir "src.tar.gz"
 Invoke-WebRequest -Uri $repoArchiveUrl -OutFile $archivePath -UseBasicParsing
@@ -32,9 +30,10 @@ if (-not $srcRoot) {
 
 $layout = "legacy"
 $goModPath = Join-Path $srcRoot.FullName "go.mod"
-if (Test-Path (Join-Path $srcRoot.FullName "backend\\go.mod")) {
+$backendGoModPath = Join-Path (Join-Path $srcRoot.FullName "backend") "go.mod"
+if (Test-Path $backendGoModPath) {
     $layout = "v2"
-    $goModPath = Join-Path $srcRoot.FullName "backend\\go.mod"
+    $goModPath = $backendGoModPath
 }
 
 Write-Host "[meta] detected upstream layout: $layout"

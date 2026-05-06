@@ -14,7 +14,8 @@ if ($PSVersionTable.PSVersion.Major -ge 7) {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
-$metaJson = & powershell -NoProfile -File (Join-Path $PSScriptRoot "resolve-build-metadata.ps1") `
+$shell = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh" } else { "powershell" }
+$metaJson = & $shell -NoProfile -File (Join-Path $PSScriptRoot "resolve-build-metadata.ps1") `
     -LockPath $LockPath `
     -BackendImage $BackendImage `
     -AdminWebImage $AdminWebImage `
