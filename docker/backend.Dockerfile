@@ -24,7 +24,9 @@ COPY --from=source /src/backend/go.mod /src/backend/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY --from=source /src/backend ./
 COPY docker/patches/backend-config-env.patch /tmp/backend-config-env.patch
-RUN git apply /tmp/backend-config-env.patch
+COPY docker/patches/backend-migrations-goose.patch /tmp/backend-migrations-goose.patch
+RUN git apply /tmp/backend-config-env.patch && \
+    git apply /tmp/backend-migrations-goose.patch
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} \
     go build -trimpath \
@@ -47,6 +49,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     cd /tmp/goose-src && \
     go mod init goose-wrapper && \
     go get github.com/pressly/goose/v3/cmd/goose@${GOOSE_VERSION} && \
+    go run github.com/pressly/goose/v3/cmd/goose -dir /src/backend/migrations validate && \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} \
     go build -trimpath -ldflags="-s -w" -o /out/goose github.com/pressly/goose/v3/cmd/goose
 RUN mkdir -p /out/runtime/logs /out/runtime/storage/public

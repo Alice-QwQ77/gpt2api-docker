@@ -36,6 +36,7 @@ ghcr.io/alice-qwq77/gpt2api-user-web:latest
 - 上游前端镜像的管理端 nginx fallback 指向 `/admin/index.html`，但 Vite 没有配置 `/admin/` base；本仓库改为根路径部署并 fallback 到 `/index.html`。
 - 后端容器需要分别启动 `/app/api`、`/app/admin`、`/app/openai`、`/app/worker`；本仓库后端镜像不再固定 `ENTRYPOINT`，由 compose 明确选择命令。
 - 数据库迁移不会由业务进程自动执行；本仓库用独立 `migrate` 服务运行 `/app/goose -dir /app/migrations mysql "$KLEIN_DB_DSN" up`。
+- 当前上游有一个 migration 缺少 goose 注解；本仓库在构建期打补丁，并用 `goose validate` 提前校验迁移文件。
 - 上游代码没有读取文档里的 `KLEIN_NODE_ID`；本仓库构建时加入兼容补丁，让 `KLEIN_NODE_ID` / `KLEIN_SNOWFLAKE_NODE_ID` 可用于区分多进程 Snowflake 节点。
 - 后端是 distroless nonroot 镜像，没有 shell/curl/wget；compose 不使用假的命令型 healthcheck。
 
@@ -57,10 +58,10 @@ docker compose up -d
 ```text
 用户前台:        http://<host>:17080
 管理后台:        http://<host>:17088
-OpenAI API:      http://<host>:17200/v1
+OpenAI API:      http://<host>:17200/v1 或 http://<host>:17080/v1
 用户 API 健康:   http://<host>:17080/healthz
 管理 API 健康:   http://<host>:17088/healthz
-OpenAI 健康:     http://<host>:17200/v1/health
+OpenAI 健康:     http://<host>:17200/v1/health 或 http://<host>:17080/v1/health
 ```
 
 更多部署细节见 [`deploy/README.md`](deploy/README.md)。
@@ -93,6 +94,6 @@ gpt2api-user-web-local:dev
 - `docker/admin-web.Dockerfile`：构建管理后台静态镜像
 - `docker/user-web.Dockerfile`：构建用户前台静态镜像
 - `docker/nginx/*.conf`：前端镜像内置静态 nginx 配置
-- `docker/patches/backend-config-env.patch`：构建期兼容补丁，目前用于 Snowflake 节点环境变量
+- `docker/patches/*.patch`：构建期兼容补丁，目前用于 Snowflake 节点环境变量和 goose migration 注解
 - `deploy/docker-compose.yml`：一键部署 MySQL、Redis、迁移、后端、前端和外层 nginx
 - `deploy/nginx/*.conf`：外层 nginx 统一入口和 API 反代配置
