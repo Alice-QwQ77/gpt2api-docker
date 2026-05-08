@@ -9,14 +9,11 @@ on:
       - docker/**
       - .dockerignore
       - upstream.lock.json
-      - deploy/**
       - scripts/**
       - .github/workflows/docker-publish.yml
 
 env:
-  GHCR_BACKEND_IMAGE: ghcr.io/alice-qwq77/gpt2api
-  GHCR_ADMIN_WEB_IMAGE: ghcr.io/alice-qwq77/gpt2api-admin-web
-  GHCR_USER_WEB_IMAGE: ghcr.io/alice-qwq77/gpt2api-user-web
+  GHCR_IMAGE: ghcr.io/alice-qwq77/gpt2api
 
 permissions:
   contents: read
@@ -37,7 +34,7 @@ jobs:
       - name: Read build metadata
         id: vars
         shell: pwsh
-        run: ./scripts/resolve-build-metadata.ps1 -BackendImage $env:GHCR_BACKEND_IMAGE -AdminWebImage $env:GHCR_ADMIN_WEB_IMAGE -UserWebImage $env:GHCR_USER_WEB_IMAGE -WriteGitHubOutput
+        run: ./scripts/resolve-build-metadata.ps1 -Image $env:GHCR_IMAGE -WriteGitHubOutput
 
       - name: Stop on unsupported legacy layout
         if: steps.vars.outputs.layout != 'v2'
@@ -65,7 +62,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push backend image
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -75,13 +72,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ${{ steps.vars.outputs.backend_image }}:latest
-            ${{ steps.vars.outputs.backend_image }}:upstream-${{ steps.vars.outputs.upstream_short }}
-            ${{ steps.vars.outputs.backend_image }}:git-${{ steps.gitvars.outputs.git_short }}
+            ${{ steps.vars.outputs.image }}:latest
+            ${{ steps.vars.outputs.image }}:upstream-${{ steps.vars.outputs.upstream_short }}
+            ${{ steps.vars.outputs.image }}:git-${{ steps.gitvars.outputs.git_short }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.description=Automated backend Docker build for 432539/gpt2api
+            org.opencontainers.image.description=Automated all-in-one Docker build for 432539/gpt2api
             com.github.upstream.repo=${{ steps.vars.outputs.repo_url }}
             com.github.upstream.commit=${{ steps.vars.outputs.upstream_commit }}
           build-args: |
@@ -89,47 +86,3 @@ jobs:
             UPSTREAM_ARCHIVE_URL=${{ steps.vars.outputs.archive_url }}
             BUILD_DATE=${{ steps.vars.outputs.build_date }}
             VERSION=${{ steps.vars.outputs.version_tag }}
-
-      - name: Build and push admin-web image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./docker/admin-web.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: |
-            ${{ steps.vars.outputs.admin_web_image }}:latest
-            ${{ steps.vars.outputs.admin_web_image }}:upstream-${{ steps.vars.outputs.upstream_short }}
-            ${{ steps.vars.outputs.admin_web_image }}:git-${{ steps.gitvars.outputs.git_short }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.description=Automated admin-web Docker build for 432539/gpt2api
-            com.github.upstream.repo=${{ steps.vars.outputs.repo_url }}
-            com.github.upstream.commit=${{ steps.vars.outputs.upstream_commit }}
-          build-args: |
-            UPSTREAM_ARCHIVE_URL=${{ steps.vars.outputs.archive_url }}
-
-      - name: Build and push user-web image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./docker/user-web.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: |
-            ${{ steps.vars.outputs.user_web_image }}:latest
-            ${{ steps.vars.outputs.user_web_image }}:upstream-${{ steps.vars.outputs.upstream_short }}
-            ${{ steps.vars.outputs.user_web_image }}:git-${{ steps.gitvars.outputs.git_short }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.description=Automated user-web Docker build for 432539/gpt2api
-            com.github.upstream.repo=${{ steps.vars.outputs.repo_url }}
-            com.github.upstream.commit=${{ steps.vars.outputs.upstream_commit }}
-          build-args: |
-            UPSTREAM_ARCHIVE_URL=${{ steps.vars.outputs.archive_url }}

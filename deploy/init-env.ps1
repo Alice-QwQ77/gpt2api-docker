@@ -1,10 +1,6 @@
 param(
-    [string]$BackendImage = "",
-    [string]$AdminWebImage = "",
-    [string]$UserWebImage = "",
-    [string]$BackendPackageName = "gpt2api",
-    [string]$AdminWebPackageName = "gpt2api-admin-web",
-    [string]$UserWebPackageName = "gpt2api-user-web",
+    [string]$Image = "",
+    [string]$PackageName = "gpt2api",
     [string]$DefaultOwner = "alice-qwq77",
     [string]$EnvPath = ".env",
     [switch]$Force
@@ -51,30 +47,14 @@ if ((Test-Path $outputPath) -and -not $Force) {
     throw "$outputPath already exists. Use -Force to overwrite."
 }
 
-if ([string]::IsNullOrWhiteSpace($BackendImage) -or [string]::IsNullOrWhiteSpace($AdminWebImage) -or [string]::IsNullOrWhiteSpace($UserWebImage)) {
+if ([string]::IsNullOrWhiteSpace($Image)) {
     Push-Location $repoRoot
     try {
         $remote = git remote get-url origin 2>$null
         if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($remote)) {
-            if ([string]::IsNullOrWhiteSpace($BackendImage)) {
-                $BackendImage = Resolve-GhcrImage -RemoteUrl $remote.Trim() -PackageName $BackendPackageName
-            }
-            if ([string]::IsNullOrWhiteSpace($AdminWebImage)) {
-                $AdminWebImage = Resolve-GhcrImage -RemoteUrl $remote.Trim() -PackageName $AdminWebPackageName
-            }
-            if ([string]::IsNullOrWhiteSpace($UserWebImage)) {
-                $UserWebImage = Resolve-GhcrImage -RemoteUrl $remote.Trim() -PackageName $UserWebPackageName
-            }
+            $Image = Resolve-GhcrImage -RemoteUrl $remote.Trim() -PackageName $PackageName
         } else {
-            if ([string]::IsNullOrWhiteSpace($BackendImage)) {
-                $BackendImage = ("ghcr.io/{0}/{1}:latest" -f $DefaultOwner, $BackendPackageName).ToLowerInvariant()
-            }
-            if ([string]::IsNullOrWhiteSpace($AdminWebImage)) {
-                $AdminWebImage = ("ghcr.io/{0}/{1}:latest" -f $DefaultOwner, $AdminWebPackageName).ToLowerInvariant()
-            }
-            if ([string]::IsNullOrWhiteSpace($UserWebImage)) {
-                $UserWebImage = ("ghcr.io/{0}/{1}:latest" -f $DefaultOwner, $UserWebPackageName).ToLowerInvariant()
-            }
+            $Image = ("ghcr.io/{0}/{1}:latest" -f $DefaultOwner, $PackageName).ToLowerInvariant()
         }
     } finally {
         Pop-Location
@@ -82,12 +62,8 @@ if ([string]::IsNullOrWhiteSpace($BackendImage) -or [string]::IsNullOrWhiteSpace
 }
 
 $content = Get-Content $templatePath -Raw
-$content = [regex]::Replace($content, '(?m)^KLEIN_BACKEND_IMAGE=.*$', ('KLEIN_BACKEND_IMAGE=' + $BackendImage))
-$content = [regex]::Replace($content, '(?m)^KLEIN_ADMIN_WEB_IMAGE=.*$', ('KLEIN_ADMIN_WEB_IMAGE=' + $AdminWebImage))
-$content = [regex]::Replace($content, '(?m)^KLEIN_USER_WEB_IMAGE=.*$', ('KLEIN_USER_WEB_IMAGE=' + $UserWebImage))
+$content = [regex]::Replace($content, '(?m)^KLEIN_IMAGE=.*$', ('KLEIN_IMAGE=' + $Image))
 
 Set-Content -Path $outputPath -Value $content -Encoding utf8
 Write-Host "[init-env] wrote $outputPath"
-Write-Host "[init-env] KLEIN_BACKEND_IMAGE=$BackendImage"
-Write-Host "[init-env] KLEIN_ADMIN_WEB_IMAGE=$AdminWebImage"
-Write-Host "[init-env] KLEIN_USER_WEB_IMAGE=$UserWebImage"
+Write-Host "[init-env] KLEIN_IMAGE=$Image"

@@ -1,8 +1,6 @@
 param(
     [string]$LockPath = "upstream.lock.json",
-    [string]$BackendImage = "ghcr.io/alice-qwq77/gpt2api",
-    [string]$AdminWebImage = "ghcr.io/alice-qwq77/gpt2api-admin-web",
-    [string]$UserWebImage = "ghcr.io/alice-qwq77/gpt2api-user-web",
+    [string]$Image = "",
     [switch]$WriteGitHubOutput
 )
 
@@ -57,11 +55,13 @@ if (-not $goVersion) {
     throw "unable to determine Go version from upstream go.mod"
 }
 
+if ([string]::IsNullOrWhiteSpace($Image)) {
+    $Image = "ghcr.io/alice-qwq77/gpt2api"
+}
+
 $result = [ordered]@{
     layout          = $layout
-    backend_image   = $BackendImage.ToLowerInvariant()
-    admin_web_image = $AdminWebImage.ToLowerInvariant()
-    user_web_image  = $UserWebImage.ToLowerInvariant()
+    image           = $Image.ToLowerInvariant()
     repo_url        = $lock.repo_url
     upstream_commit = $lock.commit
     upstream_short  = $lock.commit.Substring(0, 7)

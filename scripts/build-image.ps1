@@ -1,7 +1,5 @@
 param(
-    [string]$BackendImage = "gpt2api-local:dev",
-    [string]$AdminWebImage = "gpt2api-admin-web-local:dev",
-    [string]$UserWebImage = "gpt2api-user-web-local:dev",
+    [string]$Image = "gpt2api-local:dev",
     [string]$LockPath = "upstream.lock.json"
 )
 
@@ -17,9 +15,7 @@ Set-Location $repoRoot
 $shell = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh" } else { "powershell" }
 $metaJson = & $shell -NoProfile -File (Join-Path $PSScriptRoot "resolve-build-metadata.ps1") `
     -LockPath $LockPath `
-    -BackendImage $BackendImage `
-    -AdminWebImage $AdminWebImage `
-    -UserWebImage $UserWebImage
+    -Image $Image
 if ($LASTEXITCODE -ne 0) {
     throw "failed to resolve build metadata"
 }
@@ -40,29 +36,9 @@ docker build `
     --build-arg "BUILD_DATE=$($meta.build_date)" `
     --build-arg "VERSION=$($meta.version_tag)" `
     -f .\docker\backend.Dockerfile `
-    -t $BackendImage `
+    -t $Image `
     .
 
 if ($LASTEXITCODE -ne 0) {
-    throw "backend docker build failed"
-}
-
-docker build `
-    --build-arg "UPSTREAM_ARCHIVE_URL=$($meta.archive_url)" `
-    -f .\docker\admin-web.Dockerfile `
-    -t $AdminWebImage `
-    .
-
-if ($LASTEXITCODE -ne 0) {
-    throw "admin-web docker build failed"
-}
-
-docker build `
-    --build-arg "UPSTREAM_ARCHIVE_URL=$($meta.archive_url)" `
-    -f .\docker\user-web.Dockerfile `
-    -t $UserWebImage `
-    .
-
-if ($LASTEXITCODE -ne 0) {
-    throw "user-web docker build failed"
+    throw "docker build failed"
 }

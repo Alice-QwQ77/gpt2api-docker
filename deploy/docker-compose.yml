@@ -52,12 +52,12 @@ services:
     networks: [klein]
 
   migrate:
-    image: ${KLEIN_BACKEND_IMAGE:?set KLEIN_BACKEND_IMAGE in deploy/.env}
+    image: ${KLEIN_IMAGE:?set KLEIN_IMAGE in deploy/.env}
     pull_policy: always
     container_name: klein-migrate
     restart: "no"
-    entrypoint: ["/app/goose"]
     command:
+      - goose
       - -dir
       - /app/migrations
       - mysql
@@ -68,11 +68,11 @@ services:
     networks: [klein]
 
   api:
-    image: ${KLEIN_BACKEND_IMAGE:?set KLEIN_BACKEND_IMAGE in deploy/.env}
+    image: ${KLEIN_IMAGE:?set KLEIN_IMAGE in deploy/.env}
     pull_policy: always
     container_name: klein-api
     restart: always
-    command: ["/app/api"]
+    command: ["api"]
     environment: &backend-env
       KLEIN_ENV: ${KLEIN_ENV:-prod}
       KLEIN_DB_DSN: ${KLEIN_DB_DSN}
@@ -101,11 +101,11 @@ services:
     networks: [klein]
 
   admin:
-    image: ${KLEIN_BACKEND_IMAGE:?set KLEIN_BACKEND_IMAGE in deploy/.env}
+    image: ${KLEIN_IMAGE:?set KLEIN_IMAGE in deploy/.env}
     pull_policy: always
     container_name: klein-admin
     restart: always
-    command: ["/app/admin"]
+    command: ["admin"]
     environment:
       <<: *backend-env
       KLEIN_NODE_ID: 2
@@ -119,11 +119,11 @@ services:
     networks: [klein]
 
   openai:
-    image: ${KLEIN_BACKEND_IMAGE:?set KLEIN_BACKEND_IMAGE in deploy/.env}
+    image: ${KLEIN_IMAGE:?set KLEIN_IMAGE in deploy/.env}
     pull_policy: always
     container_name: klein-openai
     restart: always
-    command: ["/app/openai"]
+    command: ["openai"]
     environment:
       <<: *backend-env
       KLEIN_NODE_ID: 3
@@ -137,11 +137,11 @@ services:
     networks: [klein]
 
   worker:
-    image: ${KLEIN_BACKEND_IMAGE:?set KLEIN_BACKEND_IMAGE in deploy/.env}
+    image: ${KLEIN_IMAGE:?set KLEIN_IMAGE in deploy/.env}
     pull_policy: always
     container_name: klein-worker
     restart: always
-    command: ["/app/worker"]
+    command: ["worker"]
     environment:
       <<: *backend-env
       KLEIN_NODE_ID: 4
@@ -154,27 +154,31 @@ services:
     networks: [klein]
 
   user-web:
-    image: ${KLEIN_USER_WEB_IMAGE:?set KLEIN_USER_WEB_IMAGE in deploy/.env}
+    image: ${KLEIN_IMAGE:?set KLEIN_IMAGE in deploy/.env}
     pull_policy: always
     container_name: klein-user-web
     restart: always
+    command: ["user-web"]
     expose: ["80"]
     depends_on: [api, openai]
     networks: [klein]
 
   admin-web:
-    image: ${KLEIN_ADMIN_WEB_IMAGE:?set KLEIN_ADMIN_WEB_IMAGE in deploy/.env}
+    image: ${KLEIN_IMAGE:?set KLEIN_IMAGE in deploy/.env}
     pull_policy: always
     container_name: klein-admin-web
     restart: always
+    command: ["admin-web"]
     expose: ["80"]
     depends_on: [admin]
     networks: [klein]
 
   nginx:
-    image: nginx:1.27-alpine
+    image: ${KLEIN_IMAGE:?set KLEIN_IMAGE in deploy/.env}
+    pull_policy: always
     container_name: klein-nginx
     restart: always
+    command: ["nginx", "-g", "daemon off;"]
     depends_on: [api, admin, openai, user-web, admin-web]
     ports:
       - "${KLEIN_USER_WEB_PORT:-17080}:17080"
